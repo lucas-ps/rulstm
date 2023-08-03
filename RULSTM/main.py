@@ -257,12 +257,27 @@ def get_scores(model, loader, challenge=False, include_discarded = False):
     labels = np.concatenate(labels)
     ids = np.concatenate(ids)
 
-    actions = pd.read_csv(
-        join(args.path_to_data, 'actions.csv'), index_col='id')
+    if args.ek100:
+        actions = pd.read_csv(
+            join(args.path_to_data, 'actions.csv'), index_col='id')
+    else:
+        # Modified to work with non ek55 datasets
+        actions = pd.read_csv(
+            join(args.path_to_data, 'actions.csv'), names=['id', 'action', 'verb_noun'], index_col='id', header=None)
+        actions[['verb', 'noun']] = actions['verb_noun'].str.split('_', n=1, expand=True)    
+        
+    # Create mappings from the unique verbs/nouns to unique integers
+    verb_mapping = {verb: i for i, verb in enumerate(actions['verb'].unique())}
+    noun_mapping = {noun: i for i, noun in enumerate(actions['noun'].unique())}
 
+    # Replace the verbs/nouns with their mapped integer values
+    actions['verb'] = actions['verb'].map(verb_mapping)
+    actions['noun'] = actions['noun'].map(noun_mapping)
+
+    # Now, verbs and nouns are represented as integers
     vi = get_marginal_indexes(actions, 'verb')
     ni = get_marginal_indexes(actions, 'noun')
-
+    
     action_probs = softmax(action_scores.reshape(-1, action_scores.shape[-1]))
 
     verb_scores = marginalize(action_probs, vi).reshape(
@@ -380,24 +395,42 @@ def get_validation_ids():
     tail_verbs_ids = pd.read_csv(join(args.path_to_data, 'validation_tail_verbs_ids.csv'), names=['id'], squeeze=True)
     tail_nouns_ids = pd.read_csv(join(args.path_to_data, 'validation_tail_nouns_ids.csv'), names=['id'], squeeze=True)
     tail_actions_ids = pd.read_csv(join(args.path_to_data, 'validation_tail_actions_ids.csv'), names=['id'], squeeze=True)
+    # unseen_participants_ids = pd.read_csv(join(args.path_to_data, 'test_unseen.csv'), names=['id'], squeeze=True)
+    # tail_verbs_ids = pd.read_csv(join(args.path_to_data, 'EPIC_many_shot_verbs.csv'), names=['id'], squeeze=True)
+    # tail_nouns_ids = pd.read_csv(join(args.path_to_data, 'EPIC_many_shot_nouns.csv'), names=['id'], squeeze=True)
+    # tail_actions_ids = pd.read_csv(join(args.path_to_data, 'actions.csv'), names=['id'], squeeze=True)
+
 
     return unseen_participants_ids, tail_verbs_ids, tail_nouns_ids, tail_actions_ids
 
 def get_many_shot():
     """Get many shot verbs, nouns and actions for class-aware metrics (Mean Top-5 Recall)"""
     # read the list of many shot verbs
-    many_shot_verbs = pd.read_csv(
-        join(args.path_to_data, 'EPIC_many_shot_verbs.csv'))['verb_class'].values
-    # read the list of many shot nouns
-    many_shot_nouns = pd.read_csv(
-        join(args.path_to_data, 'EPIC_many_shot_nouns.csv'))['noun_class'].values
+    many_shot_verbs = None
+    many_shot_nouns = None
+    actions = None
+    if args.ek100:
+        many_shot_verbs = pd.read_csv(
+            join(args.path_to_data, 'EPIC_many_shot_verbs.csv'))['verb_class'].values
+        # read the list of many shot nouns
+        many_shot_nouns = pd.read_csv(
+            join(args.path_to_data, 'EPIC_many_shot_nouns.csv'))['noun_class'].values
+        actions = pd.read_csv(
+            join(args.path_to_data, 'actions.csv'), index_col='id')
 
-    # read the list of actions
-    actions = pd.read_csv(join(args.path_to_data, 'actions.csv'))
+    else:
+        many_shot_verbs = pd.read_csv(
+            join(args.path_to_data, 'verbs.csv'))['verb_id'].values
+        # read the list of many shot nouns
+        many_shot_nouns = pd.read_csv(
+            join(args.path_to_data, 'nouns.csv'))['noun_id'].values
+        actions = pd.read_csv(
+            join(args.path_to_data, 'actions.csv'), names=['id', 'verb_noun', 'action'], index_col='id', header=None)
+        actions[['verb', 'noun']] = actions['verb_noun'].str.split('_', expand=True).astype(int)
+
     # map actions to (verb, noun) pairs
-    a_to_vn = {a[1]['id']: tuple(a[1][['verb', 'noun']].values)
-               for a in actions.iterrows()}
-
+    a_to_vn = {a[0]: tuple(a[1][['verb', 'noun']].values)
+            for a in actions.iterrows()}
     # create the list of many shot actions
     # an action is "many shot" if at least one
     # between the related verb and noun are many shot
@@ -444,97 +477,98 @@ def main():
 
             verb_scores, noun_scores, action_scores, verb_labels, noun_labels, action_labels, ids = get_scores(model, loader, include_discarded=args.ek100)
 
-        if not args.ek100:
-            verb_accuracies = topk_accuracy_multiple_timesteps(
-                verb_scores, verb_labels)
-            noun_accuracies = topk_accuracy_multiple_timesteps(
-                noun_scores, noun_labels)
-            action_accuracies = topk_accuracy_multiple_timesteps(
-                action_scores, action_labels)
+        #if not args.ek100:
+        verb_accuracies = topk_accuracy_multiple_timesteps(
+            verb_scores, verb_labels)
+        noun_accuracies = topk_accuracy_multiple_timesteps(
+            noun_scores, noun_labels)
+        action_accuracies = topk_accuracy_multiple_timesteps(
+            action_scores, action_labels)
 
-            many_shot_verbs, many_shot_nouns, many_shot_actions = get_many_shot()
+        many_shot_verbs, many_shot_nouns, many_shot_actions = get_many_shot()
 
-            verb_recalls = topk_recall_multiple_timesteps(
-                verb_scores, verb_labels, k=5, classes=many_shot_verbs)
-            noun_recalls = topk_recall_multiple_timesteps(
-                noun_scores, noun_labels, k=5, classes=many_shot_nouns)
-            action_recalls = topk_recall_multiple_timesteps(
-                action_scores, action_labels, k=5, classes=many_shot_actions)
+        verb_recalls = topk_recall_multiple_timesteps(
+            verb_scores, verb_labels, k=5, classes=many_shot_verbs)
+        noun_recalls = topk_recall_multiple_timesteps(
+            noun_scores, noun_labels, k=5, classes=many_shot_nouns)
+        action_recalls = topk_recall_multiple_timesteps(
+            action_scores, action_labels, k=5, classes=many_shot_actions)
 
-            all_accuracies = np.concatenate(
-                [verb_accuracies, noun_accuracies, action_accuracies, verb_recalls, noun_recalls, action_recalls])
-            all_accuracies = all_accuracies[[0, 1, 6, 2, 3, 7, 4, 5, 8]]
-            indices = [
-                ('Verb', 'Top-1 Accuracy'),
-                ('Verb', 'Top-5 Accuracy'),
-                ('Verb', 'Mean Top-5 Recall'),
-                ('Noun', 'Top-1 Accuracy'),
-                ('Noun', 'Top-5 Accuracy'),
-                ('Noun', 'Mean Top-5 Recall'),
-                ('Action', 'Top-1 Accuracy'),
-                ('Action', 'Top-5 Accuracy'),
-                ('Action', 'Mean Top-5 Recall'),
-            ]
+        all_accuracies = np.concatenate(
+            [verb_accuracies, noun_accuracies, action_accuracies, verb_recalls, noun_recalls, action_recalls])
+        all_accuracies = all_accuracies[[0, 1, 6, 2, 3, 7, 4, 5, 8]]
+        indices = [
+            ('Verb', 'Top-1 Accuracy'),
+            ('Verb', 'Top-5 Accuracy'),
+            ('Verb', 'Mean Top-5 Recall'),
+            ('Noun', 'Top-1 Accuracy'),
+            ('Noun', 'Top-5 Accuracy'),
+            ('Noun', 'Mean Top-5 Recall'),
+            ('Action', 'Top-1 Accuracy'),
+            ('Action', 'Top-5 Accuracy'),
+            ('Action', 'Mean Top-5 Recall'),
+        ]
 
-            if args.task == 'anticipation':
-                cc = np.linspace(args.alpha*args.S_ant, args.alpha, args.S_ant, dtype=str)
-            else:
-                cc = [f"{c:0.1f}%" for c in np.linspace(0,100,args.S_ant+1)[1:]]
-
-            scores = pd.DataFrame(all_accuracies*100, columns=cc, index=pd.MultiIndex.from_tuples(indices))
+        if args.task == 'anticipation':
+            cc = np.linspace(args.alpha*args.S_ant, args.alpha, args.S_ant, dtype=str)
         else:
-            overall_verb_recalls = topk_recall_multiple_timesteps(
-                verb_scores, verb_labels, k=5)
-            overall_noun_recalls = topk_recall_multiple_timesteps(
-                noun_scores, noun_labels, k=5)
-            overall_action_recalls = topk_recall_multiple_timesteps(
-                action_scores, action_labels, k=5)
+            cc = [f"{c:0.1f}%" for c in np.linspace(0,100,args.S_ant+1)[1:]]
 
-            unseen, tail_verbs, tail_nouns, tail_actions = get_validation_ids()
+        scores = pd.DataFrame(all_accuracies*100, columns=cc, index=pd.MultiIndex.from_tuples(indices))
+        # Does not work
+        # else:
+        #     overall_verb_recalls = topk_recall_multiple_timesteps(
+        #         verb_scores, verb_labels, k=5)
+        #     overall_noun_recalls = topk_recall_multiple_timesteps(
+        #         noun_scores, noun_labels, k=5)
+        #     overall_action_recalls = topk_recall_multiple_timesteps(
+        #         action_scores, action_labels, k=5)
 
-            unseen_bool_idx = pd.Series(ids).isin(unseen).values
-            tail_verbs_bool_idx = pd.Series(ids).isin(tail_verbs).values
-            tail_nouns_bool_idx = pd.Series(ids).isin(tail_nouns).values
-            tail_actions_bool_idx = pd.Series(ids).isin(tail_actions).values
+        #     unseen, tail_verbs, tail_nouns, tail_actions = get_validation_ids()
 
-            tail_verb_recalls = topk_recall_multiple_timesteps(
-                verb_scores[tail_verbs_bool_idx], verb_labels[tail_verbs_bool_idx], k=5)
-            tail_noun_recalls = topk_recall_multiple_timesteps(
-                noun_scores[tail_nouns_bool_idx], noun_labels[tail_nouns_bool_idx], k=5)
-            tail_action_recalls = topk_recall_multiple_timesteps(
-                action_scores[tail_actions_bool_idx], action_labels[tail_actions_bool_idx], k=5)
+        #     unseen_bool_idx = pd.Series(ids).isin(unseen).values
+        #     tail_verbs_bool_idx = pd.Series(ids).isin(tail_verbs).values
+        #     tail_nouns_bool_idx = pd.Series(ids).isin(tail_nouns).values
+        #     tail_actions_bool_idx = pd.Series(ids).isin(tail_actions).values
+
+        #     tail_verb_recalls = topk_recall_multiple_timesteps(
+        #         verb_scores[tail_verbs_bool_idx], verb_labels[tail_verbs_bool_idx], k=5)
+        #     tail_noun_recalls = topk_recall_multiple_timesteps(
+        #         noun_scores[tail_nouns_bool_idx], noun_labels[tail_nouns_bool_idx], k=5)
+        #     tail_action_recalls = topk_recall_multiple_timesteps(
+        #         action_scores[tail_actions_bool_idx], action_labels[tail_actions_bool_idx], k=5)
 
 
-            unseen_verb_recalls = topk_recall_multiple_timesteps(
-                verb_scores[unseen_bool_idx], verb_labels[unseen_bool_idx], k=5)
-            unseen_noun_recalls = topk_recall_multiple_timesteps(
-                noun_scores[unseen_bool_idx], noun_labels[unseen_bool_idx], k=5)
-            unseen_action_recalls = topk_recall_multiple_timesteps(
-                action_scores[unseen_bool_idx], action_labels[unseen_bool_idx], k=5)
+        #     unseen_verb_recalls = topk_recall_multiple_timesteps(
+        #         verb_scores[unseen_bool_idx], verb_labels[unseen_bool_idx], k=5)
+        #     unseen_noun_recalls = topk_recall_multiple_timesteps(
+        #         noun_scores[unseen_bool_idx], noun_labels[unseen_bool_idx], k=5)
+        #     unseen_action_recalls = topk_recall_multiple_timesteps(
+        #         action_scores[unseen_bool_idx], action_labels[unseen_bool_idx], k=5)
 
-            all_accuracies = np.concatenate(
-                [overall_verb_recalls, overall_noun_recalls, overall_action_recalls, unseen_verb_recalls, unseen_noun_recalls, unseen_action_recalls, tail_verb_recalls, tail_noun_recalls, tail_action_recalls]
-            ) #9 x 8
+        #     all_accuracies = np.concatenate(
+        #         [overall_verb_recalls, overall_noun_recalls, overall_action_recalls, unseen_verb_recalls, unseen_noun_recalls, unseen_action_recalls, tail_verb_recalls, tail_noun_recalls, tail_action_recalls]
+        #     ) #9 x 8
 
-            #all_accuracies = all_accuracies[[0, 1, 6, 2, 3, 7, 4, 5, 8]]
-            indices = [
-                ('Overall Mean Top-5 Recall', 'Verb'),
-                ('Overall Mean Top-5 Recall', 'Noun'),
-                ('Overall Mean Top-5 Recall', 'Action'),
-                ('Unseen Mean Top-5 Recall', 'Verb'),
-                ('Unseen Mean Top-5 Recall', 'Noun'),
-                ('Unseen Mean Top-5 Recall', 'Action'),
-                ('Tail Mean Top-5 Recall', 'Verb'),
-                ('Tail Mean Top-5 Recall', 'Noun'),
-                ('Tail Mean Top-5 Recall', 'Action'),
-            ]
+        #     #all_accuracies = all_accuracies[[0, 1, 6, 2, 3, 7, 4, 5, 8]]
+        #     indices = [
+        #         ('Overall Mean Top-5 Recall', 'Verb'),
+        #         ('Overall Mean Top-5 Recall', 'Noun'),
+        #         ('Overall Mean Top-5 Recall', 'Action'),
+        #         ('Unseen Mean Top-5 Recall', 'Verb'),
+        #         ('Unseen Mean Top-5 Recall', 'Noun'),
+        #         ('Unseen Mean Top-5 Recall', 'Action'),
+        #         ('Tail Mean Top-5 Recall', 'Verb'),
+        #         ('Tail Mean Top-5 Recall', 'Noun'),
+        #         ('Tail Mean Top-5 Recall', 'Action'),
+        #     ]
 
-            if args.task == 'anticipation':
-                cc = np.linspace(args.alpha*args.S_ant, args.alpha, args.S_ant, dtype=str)
-            else:
-                cc = [f"{c:0.1f}%" for c in np.linspace(0,100,args.S_ant+1)[1:]]
+        #     if args.task == 'anticipation':
+        #         cc = np.linspace(args.alpha*args.S_ant, args.alpha, args.S_ant, dtype=str)
+        #     else:
+        #         cc = [f"{c:0.1f}%" for c in np.linspace(0,100,args.S_ant+1)[1:]]
 
-            scores = pd.DataFrame(all_accuracies*100, columns=cc, index=pd.MultiIndex.from_tuples(indices))
+        #     scores = pd.DataFrame(all_accuracies*100, columns=cc, index=pd.MultiIndex.from_tuples(indices))
 
 
         print(scores)
