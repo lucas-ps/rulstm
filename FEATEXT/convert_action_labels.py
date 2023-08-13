@@ -128,11 +128,18 @@ action_records = [
 ]
 
 # Split the data into training and validation sets
-train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
+train_df, val_test_df = train_test_split(df, test_size=0.3, random_state=42)
+val_df, test_df = train_test_split(val_test_df, test_size=0.5, random_state=42)
+test_seen_df = pd.concat([train_df, val_df], ignore_index=True)
+test_seen_df = test_seen_df.drop(columns=['action', 'verb', 'noun'])
+test_df = test_df.drop(columns=['action', 'verb', 'noun'])
 
 # Save validation labels, training labels, actions, verbs, and nouns as separate CSV files
 train_df.to_csv('training.csv', index=True, header=False)
 val_df.to_csv('validation.csv', index=True, header=False)
+test_seen_df.to_csv('test_seen.csv', index=True, header=False)
+test_df.to_csv('test_unseen.csv', index=True, header=False)
+
 pd.DataFrame.from_dict(verbs, orient='index').reset_index().to_csv('verbs.csv', index=False, header=['verb', 'verb_id'])
 pd.DataFrame.from_dict(nouns, orient='index').reset_index().to_csv('nouns.csv', index=False, header=['noun', 'noun_id'])
 

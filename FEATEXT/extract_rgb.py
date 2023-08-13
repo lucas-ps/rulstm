@@ -17,7 +17,7 @@ from multiprocessing import Pool
 parser = ArgumentParser(description='RGB Feature Extraction')
 parser.add_argument('--dataset_path', type=str, required=False,
                     help='Path to the dataset.')
-parser.add_argument('--dataset', type=str, choices=['50-Salads', 'Breakfast', 'Breakfast1'], required=True,
+parser.add_argument('--dataset', type=str, choices=['50-Salads', 'Breakfast', 'Breakfast1', 'EK'], required=True,
                     help='Dataset to be used (50-Salads/Breakfast).')
 parser.add_argument('--generate_jpgs', action='store_true', default=False,
                     help='Flag to generate frame JPGs.')
@@ -69,7 +69,10 @@ if args.generate_jpgs:
     if args.dataset_path is None:
         print("No dataset path provided. Please provide this using the --dataset_path argument")
     else:
-        files = glob(os.path.join(args.dataset_path, '**', '*.avi'), recursive=True)
+        if args.dataset == 'EK':
+            files = glob(os.path.join(args.dataset_path, '**', '*.MP4'), recursive=True)
+        else:
+            files = glob(os.path.join(args.dataset_path, '**', '*.avi'), recursive=True)
         output_folder = "./frames/"+args.dataset+"_frames/"
 
         if not os.path.exists(output_folder):
@@ -128,6 +131,9 @@ if args.extract_features:
     if args.dataset == "50-Salads":
         env = lmdb.open('features/50-Salads/rgb', map_size=1099511627776)
         imgs = sorted(glob('./frames/50-Salads_frames/**/*.jpg'))
+    elif args.dataset == "EK":
+        env = lmdb.open('features/EK/rgb', map_size=1099511627776)
+        imgs = sorted(glob('./frames/EK_frames/**/*.jpg'))
     else:
         env = lmdb.open('features/Breakfast1/rgb', map_size=1099511627776)
         imgs = sorted(glob('./frames/Breakfast1_frames/**/*.jpg'))

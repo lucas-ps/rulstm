@@ -53,6 +53,56 @@ class ArrayValueMeter(object):
         else:
             return val
 
+def precision_recall(scores, labels, selected_class):
+    """Computes precision and recall for a selected class.
+    Args:
+        scores: numpy ndarray, shape = (instance_count, label_count)
+        labels: numpy ndarray, shape = (instance_count,)
+        selected_class: int, class for which precision and recall is computed
+
+    Returns:
+        tuple of float: precision and recall for the selected class
+    """
+    # Get the predicted class for each instance
+    predicted_class = scores.argmax(axis=1)
+
+    # True positives
+    TP = np.sum((predicted_class == selected_class) & (labels == selected_class))
+    # False positives
+    FP = np.sum((predicted_class == selected_class) & (labels != selected_class))
+    # False negatives
+    FN = np.sum((predicted_class != selected_class) & (labels == selected_class))
+
+    # Calculate precision and recall
+    precision = TP / (TP + FP) if TP + FP > 0 else 0
+    recall = TP / (TP + FN) if TP + FN > 0 else 0
+
+    return precision, recall
+
+def average_class_precision_recall(preds, labels):
+    """Computes average class precision and recall.
+    Args:
+        preds: numpy ndarray, shape = (instance_count, timestep_count, label_count)
+        labels: numpy ndarray, shape = (instance_count,)
+
+    Returns:
+        tuple of float: average class precision and recall
+    """
+    num_classes = preds.shape[2]
+    all_precisions = []
+    all_recalls = []
+
+    for t in range(preds.shape[1]):
+        precisions = []
+        recalls = []
+        for c in range(num_classes):
+            p, r = precision_recall(preds[:, t, :], labels, c)
+            precisions.append(p)
+            recalls.append(r)
+        all_precisions.append(np.mean(precisions))
+        all_recalls.append(np.mean(recalls))
+
+    return np.array(all_precisions), np.array(all_recalls)
 
 def topk_accuracy(scores, labels, ks, selected_class=None):
     """Computes TOP-K accuracies for different values of k
@@ -137,6 +187,72 @@ def topk_recall_multiple_timesteps(preds, labels, k=5, classes=None):
                      for t in range(preds.shape[1])])
     return accs.reshape(1, -1)
 
+# def topk_precision(scores, labels, k=5, classes=None):
+#     unique = np.unique(labels)
+#     if classes is None:
+#         classes = unique
+#     else:
+#         classes = np.intersect1d(classes, unique)
+#     precisions = 0
+#     for c in classes:
+#         # True positives
+#         tp = np.sum((scores.argmax(axis=1) == c) & (labels == c))
+#         # False positives
+#         fp = np.sum((scores.argmax(axis=1) == c) & (labels != c))
+        
+#         # Precision for class c
+#         precision_c = tp / (tp + fp) if (tp + fp) > 0 else 0
+#         precisions += precision_c
+#     return precisions / len(classes)
+
+# def topk_precision_multiple_timesteps(preds, labels, k=5, classes=None):
+#     precs = np.array([topk_precision(preds[:, t, :], labels, k, classes)
+#                      for t in range(preds.shape[1])])
+#     return precs.reshape(1, -1)
+
+# def topk_precision(scores, labels, k=5, classes=None):
+#     unique = np.unique(labels)
+#     if classes is None:
+#         classes = unique
+#     else:
+#         classes = np.intersect1d(classes, unique)
+#     precisions = 0
+#     for c in classes:
+#         # Get the top k predictions for all instances
+#         topk_preds = np.argsort(scores, axis=1)[:, -k:]
+#         # Check if the class is among the top k predictions
+#         predicted = np.any(topk_preds == c, axis=1)
+#         filtered_labels = labels[predicted]
+#         # Compute precision for the current class
+#         if len(filtered_labels) == 0:
+#             class_precision = 0
+#         else:
+#             class_precision = np.mean(filtered_labels == c)
+#     precisions += class_precision
+#     return precisions / len(classes)
+
+def topk_precision(scores, labels, k=5, classes=None):
+    unique = np.unique(labels)
+    if classes is None:
+        classes = unique
+    else:
+        classes = np.intersect1d(classes, unique)
+    precisions = 0
+    for c in classes:
+        idx = labels == c
+        class_scores = scores[idx]
+        class_labels = labels[idx]
+        topk_preds = np.argsort(class_scores, axis=1)[:, -k:]
+        tp = np.sum(np.any(topk_preds == c, axis=1))
+        fp = k * len(class_labels) - tp
+        precision = tp / (tp + fp)
+        precisions += precision
+    return precisions / len(classes)
+
+def topk_precision_multiple_timesteps(preds, labels, k=5, classes=None):
+    precs = np.array([topk_precision(preds[:, t, :], labels, k, classes)
+                     for t in range(preds.shape[1])])
+    return precs.reshape(1, -1)
 
 def tta(scores, labels):
     """Implementation of time to action curve"""
@@ -172,6 +288,9 @@ def predictions_to_json(verb_scores, noun_scores, action_scores, action_ids, a_t
             ii): float(vv) for ii, vv in enumerate(v)}
         predictions['results'][str(i)]['noun'] = {str(
             ii): float(nn) for ii, nn in enumerate(n)}
+        default_value = (0, 0)
         predictions['results'][str(i)]['action'] = {
-            "%d,%d" % a_to_vn[ii]: float(aa) for ii, aa in zip(ai, a)}
+            "%d,%d" % a_to_vn.get(ii, default_value): float(aa) 
+            for ii, aa in zip(ai, a)
+        }
     return predictions

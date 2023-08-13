@@ -6,7 +6,7 @@ from models import RULSTM, RULSTMFusion
 import torch
 from torch.utils.data import DataLoader
 from torch.nn import functional as F
-from utils import topk_accuracy, ValueMeter, topk_accuracy_multiple_timesteps, get_marginal_indexes, marginalize, softmax,  topk_recall_multiple_timesteps, tta, predictions_to_json, MeanTopKRecallMeter
+from utils import topk_accuracy, ValueMeter, topk_accuracy_multiple_timesteps, get_marginal_indexes, marginalize, softmax, topk_precision_multiple_timesteps,  topk_recall_multiple_timesteps, tta, predictions_to_json, MeanTopKRecallMeter
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -493,20 +493,29 @@ def main():
             noun_scores, noun_labels, k=5, classes=many_shot_nouns)
         action_recalls = topk_recall_multiple_timesteps(
             action_scores, action_labels, k=5, classes=many_shot_actions)
+        
+        verb_precisions = topk_precision_multiple_timesteps(verb_scores, verb_labels, k=1, classes=many_shot_verbs)
+        noun_precisions = topk_precision_multiple_timesteps(noun_scores, noun_labels, k=1, classes=many_shot_nouns)
+        action_precisions = topk_precision_multiple_timesteps(action_scores, action_labels, k=1, classes=many_shot_actions)
 
         all_accuracies = np.concatenate(
-            [verb_accuracies, noun_accuracies, action_accuracies, verb_recalls, noun_recalls, action_recalls])
-        all_accuracies = all_accuracies[[0, 1, 6, 2, 3, 7, 4, 5, 8]]
+            [verb_accuracies, noun_accuracies, action_accuracies, verb_recalls, noun_recalls, action_recalls, verb_precisions, noun_precisions, action_precisions])
+        all_accuracies = all_accuracies[[0, 1, 6, 9, 2, 3, 7, 10, 4, 5, 8, 11]]
         indices = [
             ('Verb', 'Top-1 Accuracy'),
             ('Verb', 'Top-5 Accuracy'),
             ('Verb', 'Mean Top-5 Recall'),
+            ('Verb', 'Mean Top-1 Precision'),
+
             ('Noun', 'Top-1 Accuracy'),
             ('Noun', 'Top-5 Accuracy'),
             ('Noun', 'Mean Top-5 Recall'),
+            ('Noun', 'Mean Top-1 Precision'),
+
             ('Action', 'Top-1 Accuracy'),
             ('Action', 'Top-5 Accuracy'),
             ('Action', 'Mean Top-5 Recall'),
+            ('Action', 'Mean Top-1 Precision'),
         ]
 
         if args.task == 'anticipation':
@@ -597,10 +606,10 @@ def main():
             verb_scores, noun_scores, action_scores, verb_labels, noun_labels, action_labels,_ = get_scores(model,
                                                                                                               loader)
     elif 'test' in args.mode:
-        if args.ek100:
-            mm = ['timestamps']
-        else:
-            mm = ['seen', 'unseen']
+        # if args.ek100:
+        #     mm = ['timestamps']
+        # else:
+        mm = ['seen', 'unseen']
         for m in mm:
             if args.task == 'early_recognition' and args.modality == 'fusion':
                 loaders = [get_loader(f"test_{m}", 'rgb'), get_loader(f"test_{m}", 'flow'), get_loader(f"test_{m}", 'obj')]
@@ -623,10 +632,16 @@ def main():
             noun_scores = np.concatenate((noun_scores, np.zeros((len(discarded_ids), *noun_scores.shape[1:])))) [:,idx,:]
             action_scores = np.concatenate((action_scores, np.zeros((len(discarded_ids), *action_scores.shape[1:])))) [:,idx,:]
 
-            actions = pd.read_csv(join(args.path_to_data, 'actions.csv'))
+            actions = pd.read_csv(join(args.path_to_data, 'actions.csv'), header=None)            
+            print(actions.columns)
             # map actions to (verb, noun) pairs
-            a_to_vn = {a[1]['id']: tuple(a[1][['verb', 'noun']].values)
-                       for a in actions.iterrows()}
+            a_to_vn = {row[0]: tuple(map(int, row[1].split('_'))) for _, row in actions.iterrows()}
+            # print (actions)
+            # print (a_to_vn)
+            # a_to_vn = {a[1]['id']: tuple(a[1][['verb', 'noun']].values)
+            #            for a in actions.iterrows()}
+            # a_to_vn = {row['id']: (row['verb'], row['noun'])
+            #         for _, row in actions.iterrows()}
 
             preds = predictions_to_json(verb_scores, noun_scores, action_scores, ids, a_to_vn, version = '0.2' if args.ek100 else '0.1', sls=True)
 
