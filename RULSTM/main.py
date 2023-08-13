@@ -601,7 +601,7 @@ def main():
             print(
                 f"Loaded checkpoint for model {type(model)}. Epoch: {epoch}. Perf: {perf:0.2f}.")
 
-            loader = get_loader('validation')
+            loader = get_loader('test_unseen')
 
             verb_scores, noun_scores, action_scores, verb_labels, noun_labels, action_labels,_ = get_scores(model,
                                                                                                               loader)
@@ -636,13 +636,6 @@ def main():
             print(actions.columns)
             # map actions to (verb, noun) pairs
             a_to_vn = {row[0]: tuple(map(int, row[1].split('_'))) for _, row in actions.iterrows()}
-            # print (actions)
-            # print (a_to_vn)
-            # a_to_vn = {a[1]['id']: tuple(a[1][['verb', 'noun']].values)
-            #            for a in actions.iterrows()}
-            # a_to_vn = {row['id']: (row['verb'], row['noun'])
-            #         for _, row in actions.iterrows()}
-
             preds = predictions_to_json(verb_scores, noun_scores, action_scores, ids, a_to_vn, version = '0.2' if args.ek100 else '0.1', sls=True)
 
             if args.ek100:

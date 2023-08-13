@@ -14,8 +14,8 @@ python main.py validate data/breakfast models/breakfast --modality rgb --task an
 python main.py test data/breakfast models/breakfast --modality rgb --task anticipation --json_directory jsons/breakfast
 
 python main.py train data/ek55 models/ek55 --modality rgb --task anticipation --sequence_completion
-python main.py train data/ek55 models/ek55 --modality rgb --task anticipation
-python main.py validate data/ek55 models/ek55 --modality rgb --task anticipation --ek100
+python main.py train data/ek55 models/ek55 --modality rgb --task anticipation --ek100
+python main.py validate data/ek55 models/ek55 --modality rgb --task anticipation
 python main.py test data/ek55 models/ek55 --modality rgb --task anticipation --json_directory jsons/ek55
 
 python main.py train data/egtea models/egtea --modality rgb --task anticipation --sequence_completion
