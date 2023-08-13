@@ -53,57 +53,6 @@ class ArrayValueMeter(object):
         else:
             return val
 
-def precision_recall(scores, labels, selected_class):
-    """Computes precision and recall for a selected class.
-    Args:
-        scores: numpy ndarray, shape = (instance_count, label_count)
-        labels: numpy ndarray, shape = (instance_count,)
-        selected_class: int, class for which precision and recall is computed
-
-    Returns:
-        tuple of float: precision and recall for the selected class
-    """
-    # Get the predicted class for each instance
-    predicted_class = scores.argmax(axis=1)
-
-    # True positives
-    TP = np.sum((predicted_class == selected_class) & (labels == selected_class))
-    # False positives
-    FP = np.sum((predicted_class == selected_class) & (labels != selected_class))
-    # False negatives
-    FN = np.sum((predicted_class != selected_class) & (labels == selected_class))
-
-    # Calculate precision and recall
-    precision = TP / (TP + FP) if TP + FP > 0 else 0
-    recall = TP / (TP + FN) if TP + FN > 0 else 0
-
-    return precision, recall
-
-def average_class_precision_recall(preds, labels):
-    """Computes average class precision and recall.
-    Args:
-        preds: numpy ndarray, shape = (instance_count, timestep_count, label_count)
-        labels: numpy ndarray, shape = (instance_count,)
-
-    Returns:
-        tuple of float: average class precision and recall
-    """
-    num_classes = preds.shape[2]
-    all_precisions = []
-    all_recalls = []
-
-    for t in range(preds.shape[1]):
-        precisions = []
-        recalls = []
-        for c in range(num_classes):
-            p, r = precision_recall(preds[:, t, :], labels, c)
-            precisions.append(p)
-            recalls.append(r)
-        all_precisions.append(np.mean(precisions))
-        all_recalls.append(np.mean(recalls))
-
-    return np.array(all_precisions), np.array(all_recalls)
-
 def topk_accuracy(scores, labels, ks, selected_class=None):
     """Computes TOP-K accuracies for different values of k
     Args:
